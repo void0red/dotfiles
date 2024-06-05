@@ -1,0 +1,278 @@
+#!/bin/bash
+BASEDIR=~/.config
+BACKDIR=$(pwd)
+
+# built-in files or use `-c` to specfic
+files=(
+    microsoft-edge-stable-flags.conf
+    code-flags.conf
+    sway/config
+    sway/alternating_layouts.py
+)
+
+deps=(
+    sway
+    wlroots
+    waybar
+    swaybg
+    swaylock
+    swayidle
+    python3-ipc
+    alacritty
+    wofi
+    wayland
+    xorg-xwayland
+    dunst
+    sddm
+)
+
+_get_full_path() {
+    if [ $# -lt 2 ]; then
+        return
+    fi
+
+    if [[ "$1" == "$2"* ]]; then
+        echo $1
+    elif [[ "$1" == "/"* ]]; then
+        return
+    else
+        echo "$2/$1"
+    fi
+}
+
+_hostf() {
+    _get_full_path $1 $BASEDIR
+}
+
+_backf() {
+    _get_full_path $1 $BACKDIR
+}
+
+# test hostf
+# echo $(_hostf testfile)
+# echo $(_hostf $BASEDIR/testfile)
+# echo $(_hostf)
+# echo $(_hostf /should_not_ret)
+
+_cmpf() {
+    if [ $# -lt 2 ] || [ ! -e "$1" ] || [ ! -e "$2" ]; then
+        # echo "One or both files do not exist."
+        return 0
+    fi
+
+    if cmp -s "$1" "$2"; then
+        echo 1
+    else
+        echo 0
+    fi
+}
+
+# # test _cmpf
+# h0=$(_hostf ${files[0]})
+# b0=$(_backf ${files[0]})
+# h1=$(_hostf ${files[1]})
+# b1=$(_backf ${files[1]})
+# # echo $h0 $b0 $h1 $b1
+# echo $(_cmpf $h0 $b0) $(_cmpf $h0 $h1) $(_cmpf $h0 $b1)
+
+# TODO
+_update() {
+    echo "manual update $1 <-- $2"
+}
+
+_usage() {
+    echo "Usage: $0 Command [file]..."
+    echo "Command: status, install, restore, build, dep"
+}
+
+_read_config() {
+    return 0
+}
+
+__status_host() {
+    local hf=$(_hostf $1)
+
+    if [ ! -e $hf ]; then
+        echo "-"
+    elif [ -L $hf ]; then
+        echo "*[*]"
+    else
+        echo "*[-]"
+    fi
+}
+
+_status_backup() {
+    local bf=$(_backf $1)
+    if [ ! -e $bf ]; then
+        echo "-"
+    else
+        echo "*"
+    fi
+}
+
+_status() {
+    local data=$(
+        echo "Status:"
+        echo "filename host(symlink) backup"
+        for f in "${files[@]}"; do
+            echo "$f" "$(__status_host $f)" "$(_status_backup $f)"
+        done
+    )
+    echo "$data" | column -t
+}
+
+# backup dotfiles from host to current repo
+_build() {
+    if [ $# -ne 1 ]; then
+        return
+    fi
+
+    local hf=$(_hostf $1)
+    if [ ! -e "$hf" ]; then
+        echo "$hf doesn't exist"
+        return
+    fi
+
+    local bf=$(_backf $1)
+
+    if [ ! -e "$bf" ]; then
+        local bfd=$(dirname $bf)
+        mkdir -p $bfd
+        cp -r $hf $bf
+    elif [ "$(_cmpf $hf $bf)" -eq 1 ]; then
+        # same file
+        return
+    else
+        echo $(_update $bf $hf)
+    fi
+
+    echo "build $bf"
+    return 1
+}
+
+# create new dotfiles symlink on host, backup old config
+_install() {
+    if [ $# -ne 1 ]; then
+        return
+    fi
+
+    local bf=$(_backf $1)
+    if [ ! -e "$bf" ]; then
+        echo "$bf doesn't exist"
+        return
+    fi
+
+    local hf=$(_hostf $1)
+    if [ -L "$hf" ]; then
+        local tf=$(readlink $hf)
+        if [ "$tf" == "$bf" ]; then
+            return
+        else
+            echo "existing symlink: $hf -> $tf"
+            return
+        fi
+    fi
+
+    if [ -e "$hf" ]; then
+        if [ "$(_cmpf $hf $bf)" -eq 1 ]; then
+            rm -f $hf
+        else
+            mv $hf "$hf.brk"
+        fi
+    fi
+
+    local hfd=$(dirname $hf)
+    mkdir -p $hfd
+    ln -s $bf $hf
+    echo "install $hf"
+    return 1
+}
+
+# restore host old config
+_restore() {
+    for f in "${files[@]}"; do
+        local hf=$(_hostf $f)
+        if [[ -e $hf ]] && [[ -e "$hf.brk" ]]; then
+            rm -f $hf
+            mv "$hf.brk" "$hf"
+            echo "restore $hf"
+            continue
+        fi
+
+        if [[ -L $hf ]]; then
+            local tf=$(readlink $hf)
+            local bf=$(_backf $f)
+            if [ "$tf" == "$bf" ]; then
+                rm -f $hf
+                cp $bf $hf
+            fi
+            echo "restore $hf"
+            continue
+        fi
+    done
+}
+
+_dep() {
+    local os_name=$(. /etc/os-release && echo $ID $VERSION_ID)
+    if [ "$os_name" == "arch" ]; then
+        local sft=$(printf " %s" "${deps[@]}")
+        local cmd="sudo pacman -S $sft"
+        exec $cmd
+    fi
+}
+
+if [ $# -eq 0 ]; then
+    _status
+    exit 0
+fi
+
+case "$1" in
+-h | --help)
+    _usage
+    exit 0
+    ;;
+-s | s | status | --status)
+    _status
+    exit 0
+    ;;
+-b | b | build | --build)
+    shift
+    if [ $# -eq 0 ]; then
+        for f in "${files[@]}"; do
+            _build $f
+        done
+    else
+        while [ $# -gt 0 ]; do
+            _build $1
+            shift
+        done
+    fi
+    exit 0
+    ;;
+-i | i | install | --install)
+    shift
+    if [ $# -eq 0 ]; then
+        for f in "${files[@]}"; do
+            _install $f
+        done
+    else
+        while [ $# -gt 0 ]; do
+            _install $1
+            shift
+        done
+    fi
+    exit 0
+    ;;
+-r | r | restore | --restore)
+    _restore
+    exit 0
+    ;;
+-d | d | dep | --dep)
+    _dep
+    exit 0
+    ;;
+*)
+    _usage
+    exit 0
+    ;;
+esac
