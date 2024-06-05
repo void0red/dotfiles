@@ -6,18 +6,13 @@ BACKDIR=$(pwd)
 files=(
     microsoft-edge-stable-flags.conf
     code-flags.conf
-    sway/config
-    sway/alternating_layouts.py
 )
 
 deps=(
-    sway
+    hyprland
     wlroots
     waybar
-    swaybg
-    swaylock
-    swayidle
-    python3-ipc
+    python-i3ipc
     alacritty
     wofi
     wayland

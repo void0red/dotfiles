@@ -1,13 +1,14 @@
 # DOTfiles
 > Based on ArchLinux
 
-- [ ] sway
+- [ ] ~~sway~~
+- [ ] ~~swaybg~~
+- [ ] ~~swayidle~~
+- [ ] hyprland
 - [ ] waybar
 - [ ] alacritty
 - [ ] wofi
-- [ ] swaybg
 - [ ] dunst
-- [ ] swayidle
 - [ ] sddm
 - [ ] zsh
 - [ ] font
